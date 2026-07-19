@@ -1,0 +1,497 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TechSpot_gf — Inventario y Ventas</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<style>
+  :root{
+    --bg:#0f1115; --card:#1a1d24; --card2:#22262f; --border:#2e333d;
+    --text:#e8eaed; --muted:#9aa0a8; --accent:#0a84ff; --green:#30d158;
+    --red:#ff453a; --orange:#ff9f0a;
+  }
+  *{margin:0;padding:0;box-sizing:border-box;font-family:-apple-system,'Segoe UI',Roboto,sans-serif}
+  body{background:var(--bg);color:var(--text);min-height:100vh}
+  header{background:var(--card);border-bottom:1px solid var(--border);padding:16px 24px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px}
+  header h1{font-size:20px;font-weight:700}
+  header h1 span{color:var(--accent)}
+  nav{display:flex;gap:8px;flex-wrap:wrap}
+  nav button{background:var(--card2);color:var(--muted);border:1px solid var(--border);padding:8px 18px;border-radius:10px;cursor:pointer;font-size:14px;font-weight:600;transition:.15s}
+  nav button.active{background:var(--accent);color:#fff;border-color:var(--accent)}
+  nav button:hover:not(.active){color:var(--text)}
+  main{max-width:1100px;margin:0 auto;padding:24px}
+  .page{display:none}
+  .page.active{display:block}
+  .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px;margin-bottom:22px}
+  .stat{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:18px}
+  .stat .label{color:var(--muted);font-size:13px;margin-bottom:6px}
+  .stat .value{font-size:24px;font-weight:700}
+  .panel{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:20px;margin-bottom:20px}
+  .panel h2{font-size:16px;margin-bottom:14px}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px}
+  label{display:block;font-size:12px;color:var(--muted);margin-bottom:4px}
+  input,select{width:100%;background:var(--card2);border:1px solid var(--border);color:var(--text);padding:10px 12px;border-radius:10px;font-size:14px;outline:none}
+  input:focus,select:focus{border-color:var(--accent)}
+  .btn{background:var(--accent);color:#fff;border:none;padding:11px 22px;border-radius:10px;font-size:14px;font-weight:600;cursor:pointer;transition:.15s}
+  .btn:hover{filter:brightness(1.1)}
+  .btn.green{background:var(--green);color:#0f1115}
+  .btn.red{background:var(--red)}
+  .btn.ghost{background:var(--card2);color:var(--text);border:1px solid var(--border)}
+  .btn.sm{padding:6px 12px;font-size:12px}
+  table{width:100%;border-collapse:collapse;font-size:14px}
+  th{text-align:left;color:var(--muted);font-size:12px;font-weight:600;padding:10px 12px;border-bottom:1px solid var(--border);text-transform:uppercase;letter-spacing:.4px}
+  td{padding:12px;border-bottom:1px solid var(--border)}
+  tr:last-child td{border-bottom:none}
+  .badge{display:inline-block;padding:3px 10px;border-radius:20px;font-size:12px;font-weight:600}
+  .badge.ok{background:rgba(48,209,88,.15);color:var(--green)}
+  .badge.low{background:rgba(255,159,10,.15);color:var(--orange)}
+  .badge.out{background:rgba(255,69,58,.15);color:var(--red)}
+  .row{display:flex;gap:10px;align-items:end;flex-wrap:wrap}
+  .row>div{flex:1;min-width:140px}
+  .cart-item{display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--border);gap:10px}
+  .cart-item:last-child{border-bottom:none}
+  .muted{color:var(--muted);font-size:13px}
+  .total-line{display:flex;justify-content:space-between;padding:6px 0;font-size:15px}
+  .total-line.big{font-size:20px;font-weight:700;border-top:1px solid var(--border);margin-top:8px;padding-top:12px}
+  .empty{text-align:center;color:var(--muted);padding:30px;font-size:14px}
+  .qty-btn{background:var(--card2);border:1px solid var(--border);color:var(--text);width:28px;height:28px;border-radius:8px;cursor:pointer;font-size:15px}
+  .toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:var(--green);color:#0f1115;padding:12px 24px;border-radius:12px;font-weight:600;font-size:14px;opacity:0;pointer-events:none;transition:.3s;z-index:99}
+  .toast.show{opacity:1}
+  .toast.err{background:var(--red);color:#fff}
+  .search-wrap{margin-bottom:14px}
+  @media(max-width:600px){td,th{padding:8px 6px;font-size:13px}}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>🍎 <span id="bizNameHeader">TechSpot_gf</span></h1>
+  <nav>
+    <button class="active" data-page="inventario" onclick="goTo('inventario')">Inventario</button>
+    <button data-page="ventas" onclick="goTo('ventas')">Nueva venta</button>
+    <button data-page="historial" onclick="goTo('historial')">Historial</button>
+    <button data-page="config" onclick="goTo('config')">Ajustes</button>
+  </nav>
+</header>
+
+<main>
+
+<!-- ============ INVENTARIO ============ -->
+<div class="page active" id="page-inventario">
+  <div class="cards">
+    <div class="stat"><div class="label">Productos</div><div class="value" id="statProductos">0</div></div>
+    <div class="stat"><div class="label">Unidades en stock</div><div class="value" id="statUnidades">0</div></div>
+    <div class="stat"><div class="label">Valor del inventario</div><div class="value" id="statValor">$0</div></div>
+    <div class="stat"><div class="label">Stock bajo (≤2)</div><div class="value" id="statBajo" style="color:var(--orange)">0</div></div>
+  </div>
+
+  <div class="panel">
+    <h2 id="formTitle">Agregar producto</h2>
+    <div class="grid" style="margin-bottom:14px">
+      <div><label>Categoría</label>
+        <select id="pCat">
+          <option>iPhone</option><option>iPad</option><option>MacBook</option><option>iMac</option>
+          <option>Apple Watch</option><option>AirPods</option><option>Accesorio</option><option>Otro</option>
+        </select>
+      </div>
+      <div><label>Modelo / Nombre *</label><input id="pNombre" placeholder="Ej. iPhone 15 Pro 256GB"></div>
+      <div><label>Color / Detalle</label><input id="pDetalle" placeholder="Ej. Titanio azul"></div>
+      <div><label>Precio de compra (MXN)</label><input id="pCosto" type="number" min="0" step="0.01" placeholder="0.00"></div>
+      <div><label>Precio de venta (MXN) *</label><input id="pPrecio" type="number" min="0" step="0.01" placeholder="0.00"></div>
+      <div><label>Stock *</label><input id="pStock" type="number" min="0" step="1" placeholder="0"></div>
+    </div>
+    <div style="display:flex;gap:10px">
+      <button class="btn" id="btnGuardar" onclick="guardarProducto()">Agregar producto</button>
+      <button class="btn ghost" id="btnCancelar" style="display:none" onclick="cancelarEdicion()">Cancelar</button>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2>Productos</h2>
+    <div class="search-wrap"><input id="buscar" placeholder="🔍 Buscar producto..." oninput="renderInventario()"></div>
+    <div style="overflow-x:auto">
+      <table>
+        <thead><tr><th>Producto</th><th>Categoría</th><th>Compra</th><th>Venta</th><th>Stock</th><th></th></tr></thead>
+        <tbody id="tbodyInv"></tbody>
+      </table>
+    </div>
+    <div class="empty" id="emptyInv" style="display:none">No hay productos. Agrega el primero arriba. 👆</div>
+  </div>
+</div>
+
+<!-- ============ VENTAS ============ -->
+<div class="page" id="page-ventas">
+  <div class="panel">
+    <h2>Datos del cliente</h2>
+    <div class="grid">
+      <div><label>Nombre del cliente *</label><input id="cliNombre" placeholder="Nombre completo"></div>
+      <div><label>Teléfono</label><input id="cliTel" placeholder="Opcional"></div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2>Agregar productos a la venta</h2>
+    <div class="row">
+      <div style="flex:3"><label>Producto</label><select id="ventaProducto"></select></div>
+      <div style="flex:1"><label>Cantidad</label><input id="ventaCant" type="number" min="1" value="1"></div>
+      <div style="flex:0"><button class="btn" onclick="agregarAlCarrito()">Agregar</button></div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2>🛒 Carrito</h2>
+    <div id="carritoLista"><div class="empty">El carrito está vacío</div></div>
+    <div id="carritoTotales" style="display:none">
+      <div class="total-line big"><span>Total</span><span id="carritoTotal">$0.00</span></div>
+      <div style="display:flex;gap:10px;margin-top:14px;flex-wrap:wrap">
+        <button class="btn green" onclick="finalizarVenta()">✓ Finalizar venta y generar PDF</button>
+        <button class="btn ghost" onclick="vaciarCarrito()">Vaciar carrito</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ HISTORIAL ============ -->
+<div class="page" id="page-historial">
+  <div class="cards">
+    <div class="stat"><div class="label">Ventas realizadas</div><div class="value" id="statVentas">0</div></div>
+    <div class="stat"><div class="label">Total vendido</div><div class="value" id="statTotalVendido">$0</div></div>
+    <div class="stat"><div class="label">Ganancia estimada</div><div class="value" id="statGanancia" style="color:var(--green)">$0</div></div>
+  </div>
+  <div class="panel">
+    <h2>Historial de ventas</h2>
+    <div style="overflow-x:auto">
+      <table>
+        <thead><tr><th>Folio</th><th>Fecha</th><th>Cliente</th><th>Artículos</th><th>Total</th><th></th></tr></thead>
+        <tbody id="tbodyHist"></tbody>
+      </table>
+    </div>
+    <div class="empty" id="emptyHist" style="display:none">Aún no hay ventas registradas.</div>
+  </div>
+</div>
+
+<!-- ============ CONFIG ============ -->
+<div class="page" id="page-config">
+  <div class="panel">
+    <h2>Datos del negocio (aparecen en el PDF)</h2>
+    <div class="grid" style="margin-bottom:14px">
+      <div><label>Nombre del negocio</label><input id="cfgNombre"></div>
+      <div><label>Teléfono</label><input id="cfgTel" placeholder="Opcional"></div>
+      <div><label>Dirección</label><input id="cfgDir" placeholder="Opcional"></div>
+      <div><label>Mensaje al pie de la nota</label><input id="cfgPie" placeholder="Ej. ¡Gracias por su compra!"></div>
+    </div>
+    <button class="btn" onclick="guardarConfig()">Guardar ajustes</button>
+  </div>
+  <div class="panel">
+    <h2>Respaldo de datos</h2>
+    <p class="muted" style="margin-bottom:12px">Tus datos se guardan automáticamente en este navegador. Puedes exportar un respaldo o restaurarlo.</p>
+    <div style="display:flex;gap:10px;flex-wrap:wrap">
+      <button class="btn ghost" onclick="exportarDatos()">⬇ Exportar respaldo</button>
+      <button class="btn ghost" onclick="document.getElementById('importFile').click()">⬆ Importar respaldo</button>
+      <input type="file" id="importFile" accept=".json" style="display:none" onchange="importarDatos(event)">
+    </div>
+  </div>
+</div>
+
+</main>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const LS = 'techspot_gf_data';
+let db = { productos: [], ventas: [], folio: 1, config: { nombre:'TechSpot_gf', tel:'', dir:'', pie:'¡Gracias por su compra!' } };
+let carrito = [];
+let editandoId = null;
+
+// ---------- persistencia ----------
+function cargar(){
+  try{ const raw = localStorage.getItem(LS); if(raw){ const d = JSON.parse(raw); db = Object.assign(db, d); db.config = Object.assign({nombre:'TechSpot_gf',tel:'',dir:'',pie:'¡Gracias por su compra!'}, d.config||{}); } }catch(e){}
+}
+function guardar(){ localStorage.setItem(LS, JSON.stringify(db)); }
+
+// ---------- utilidades ----------
+const fmt = n => '$' + Number(n).toLocaleString('es-MX',{minimumFractionDigits:2,maximumFractionDigits:2});
+function toast(msg, err){ const t=document.getElementById('toast'); t.textContent=msg; t.className='toast show'+(err?' err':''); setTimeout(()=>t.className='toast',2500); }
+function goTo(p){
+  document.querySelectorAll('.page').forEach(x=>x.classList.remove('active'));
+  document.getElementById('page-'+p).classList.add('active');
+  document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('active', b.dataset.page===p));
+  if(p==='ventas') renderSelectProductos();
+  if(p==='historial') renderHistorial();
+}
+
+// ---------- inventario ----------
+function guardarProducto(){
+  const nombre = document.getElementById('pNombre').value.trim();
+  const precio = parseFloat(document.getElementById('pPrecio').value);
+  const stock = parseInt(document.getElementById('pStock').value);
+  if(!nombre || isNaN(precio) || isNaN(stock)){ toast('Completa modelo, precio de venta y stock', true); return; }
+  const prod = {
+    id: editandoId || Date.now(),
+    cat: document.getElementById('pCat').value,
+    nombre, detalle: document.getElementById('pDetalle').value.trim(),
+    costo: parseFloat(document.getElementById('pCosto').value)||0,
+    precio, stock
+  };
+  if(editandoId){ const i = db.productos.findIndex(p=>p.id===editandoId); db.productos[i]=prod; toast('Producto actualizado'); }
+  else{ db.productos.push(prod); toast('Producto agregado'); }
+  guardar(); cancelarEdicion(); renderInventario();
+}
+function editarProducto(id){
+  const p = db.productos.find(x=>x.id===id); if(!p) return;
+  editandoId = id;
+  document.getElementById('pCat').value=p.cat;
+  document.getElementById('pNombre').value=p.nombre;
+  document.getElementById('pDetalle').value=p.detalle||'';
+  document.getElementById('pCosto').value=p.costo||'';
+  document.getElementById('pPrecio').value=p.precio;
+  document.getElementById('pStock').value=p.stock;
+  document.getElementById('formTitle').textContent='Editar producto';
+  document.getElementById('btnGuardar').textContent='Guardar cambios';
+  document.getElementById('btnCancelar').style.display='inline-block';
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+function cancelarEdicion(){
+  editandoId=null;
+  ['pNombre','pDetalle','pCosto','pPrecio','pStock'].forEach(i=>document.getElementById(i).value='');
+  document.getElementById('formTitle').textContent='Agregar producto';
+  document.getElementById('btnGuardar').textContent='Agregar producto';
+  document.getElementById('btnCancelar').style.display='none';
+}
+function eliminarProducto(id){
+  if(!confirm('¿Eliminar este producto del inventario?')) return;
+  db.productos = db.productos.filter(p=>p.id!==id);
+  guardar(); renderInventario(); toast('Producto eliminado');
+}
+function stockBadge(s){
+  if(s<=0) return '<span class="badge out">Agotado</span>';
+  if(s<=2) return '<span class="badge low">'+s+' — bajo</span>';
+  return '<span class="badge ok">'+s+'</span>';
+}
+function renderInventario(){
+  const q = (document.getElementById('buscar').value||'').toLowerCase();
+  const lista = db.productos.filter(p=>(p.nombre+' '+p.cat+' '+(p.detalle||'')).toLowerCase().includes(q));
+  const tb = document.getElementById('tbodyInv');
+  tb.innerHTML = lista.map(p=>`
+    <tr>
+      <td><strong>${p.nombre}</strong>${p.detalle?'<br><span class="muted">'+p.detalle+'</span>':''}</td>
+      <td>${p.cat}</td>
+      <td class="muted">${fmt(p.costo)}</td>
+      <td><strong>${fmt(p.precio)}</strong></td>
+      <td>${stockBadge(p.stock)}</td>
+      <td style="white-space:nowrap">
+        <button class="btn ghost sm" onclick="editarProducto(${p.id})">✏️</button>
+        <button class="btn red sm" onclick="eliminarProducto(${p.id})">🗑</button>
+      </td>
+    </tr>`).join('');
+  document.getElementById('emptyInv').style.display = db.productos.length? 'none':'block';
+  // stats
+  document.getElementById('statProductos').textContent = db.productos.length;
+  document.getElementById('statUnidades').textContent = db.productos.reduce((a,p)=>a+p.stock,0);
+  document.getElementById('statValor').textContent = fmt(db.productos.reduce((a,p)=>a+p.precio*p.stock,0));
+  document.getElementById('statBajo').textContent = db.productos.filter(p=>p.stock<=2).length;
+}
+
+// ---------- ventas ----------
+function renderSelectProductos(){
+  const sel = document.getElementById('ventaProducto');
+  const disp = db.productos.filter(p=>p.stock>0);
+  sel.innerHTML = disp.length
+    ? disp.map(p=>`<option value="${p.id}">${p.nombre}${p.detalle?' ('+p.detalle+')':''} — ${fmt(p.precio)} — stock: ${p.stock}</option>`).join('')
+    : '<option value="">No hay productos con stock</option>';
+}
+function agregarAlCarrito(){
+  const id = parseInt(document.getElementById('ventaProducto').value);
+  const cant = parseInt(document.getElementById('ventaCant').value)||1;
+  const p = db.productos.find(x=>x.id===id);
+  if(!p){ toast('Selecciona un producto', true); return; }
+  const enCarrito = carrito.find(c=>c.id===id);
+  const ya = enCarrito? enCarrito.cant:0;
+  if(ya+cant > p.stock){ toast('Stock insuficiente (disponible: '+(p.stock-ya)+')', true); return; }
+  if(enCarrito) enCarrito.cant += cant;
+  else carrito.push({id:p.id, nombre:p.nombre, detalle:p.detalle, precio:p.precio, costo:p.costo, cant});
+  renderCarrito(); toast('Agregado al carrito');
+}
+function cambiarCant(id, delta){
+  const c = carrito.find(x=>x.id===id); const p = db.productos.find(x=>x.id===id);
+  if(!c) return;
+  const nueva = c.cant+delta;
+  if(nueva<=0){ carrito = carrito.filter(x=>x.id!==id); }
+  else if(p && nueva>p.stock){ toast('Stock insuficiente', true); return; }
+  else c.cant = nueva;
+  renderCarrito();
+}
+function vaciarCarrito(){ carrito=[]; renderCarrito(); }
+function renderCarrito(){
+  const el = document.getElementById('carritoLista');
+  if(!carrito.length){ el.innerHTML='<div class="empty">El carrito está vacío</div>'; document.getElementById('carritoTotales').style.display='none'; return; }
+  el.innerHTML = carrito.map(c=>`
+    <div class="cart-item">
+      <div><strong>${c.nombre}</strong>${c.detalle?' <span class="muted">('+c.detalle+')</span>':''}<br><span class="muted">${fmt(c.precio)} c/u</span></div>
+      <div style="display:flex;align-items:center;gap:8px">
+        <button class="qty-btn" onclick="cambiarCant(${c.id},-1)">−</button>
+        <strong>${c.cant}</strong>
+        <button class="qty-btn" onclick="cambiarCant(${c.id},1)">+</button>
+        <strong style="min-width:90px;text-align:right">${fmt(c.precio*c.cant)}</strong>
+      </div>
+    </div>`).join('');
+  document.getElementById('carritoTotales').style.display='block';
+  document.getElementById('carritoTotal').textContent = fmt(carrito.reduce((a,c)=>a+c.precio*c.cant,0));
+}
+function finalizarVenta(){
+  const cliente = document.getElementById('cliNombre').value.trim();
+  if(!cliente){ toast('Escribe el nombre del cliente', true); return; }
+  if(!carrito.length){ toast('El carrito está vacío', true); return; }
+  const venta = {
+    folio: db.folio++,
+    fecha: new Date().toISOString(),
+    cliente, tel: document.getElementById('cliTel').value.trim(),
+    items: carrito.map(c=>({...c})),
+    total: carrito.reduce((a,c)=>a+c.precio*c.cant,0),
+    ganancia: carrito.reduce((a,c)=>a+(c.precio-(c.costo||0))*c.cant,0)
+  };
+  // descontar stock
+  venta.items.forEach(it=>{ const p=db.productos.find(x=>x.id===it.id); if(p) p.stock=Math.max(0,p.stock-it.cant); });
+  db.ventas.unshift(venta);
+  guardar();
+  generarPDF(venta);
+  carrito=[]; renderCarrito(); renderInventario(); renderSelectProductos();
+  document.getElementById('cliNombre').value=''; document.getElementById('cliTel').value='';
+  toast('Venta registrada y PDF generado ✓');
+}
+
+// ---------- PDF ----------
+function generarPDF(v){
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF();
+  const W = doc.internal.pageSize.getWidth();
+  const cfg = db.config;
+  const azul = [10,132,255];
+
+  // encabezado
+  doc.setFillColor(...azul); doc.rect(0,0,W,34,'F');
+  doc.setTextColor(255); doc.setFont('helvetica','bold'); doc.setFontSize(20);
+  doc.text(cfg.nombre||'TechSpot_gf', 14, 15);
+  doc.setFontSize(10); doc.setFont('helvetica','normal');
+  let sub=[]; if(cfg.tel) sub.push('Tel: '+cfg.tel); if(cfg.dir) sub.push(cfg.dir);
+  if(sub.length) doc.text(sub.join('  ·  '), 14, 23);
+  doc.setFontSize(13); doc.setFont('helvetica','bold');
+  doc.text('NOTA DE VENTA', W-14, 15, {align:'right'});
+  doc.setFontSize(10); doc.setFont('helvetica','normal');
+  doc.text('Folio: '+String(v.folio).padStart(5,'0'), W-14, 22, {align:'right'});
+  const f = new Date(v.fecha);
+  doc.text(f.toLocaleDateString('es-MX',{day:'2-digit',month:'long',year:'numeric'})+' '+f.toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit'}), W-14, 28, {align:'right'});
+
+  // cliente
+  doc.setTextColor(40);
+  let y = 46;
+  doc.setFont('helvetica','bold'); doc.setFontSize(11); doc.text('Cliente:', 14, y);
+  doc.setFont('helvetica','normal'); doc.text(v.cliente + (v.tel? '   ·   Tel: '+v.tel:''), 34, y);
+  y += 12;
+
+  // tabla
+  doc.setFillColor(240,243,247); doc.rect(14, y-6, W-28, 9, 'F');
+  doc.setFont('helvetica','bold'); doc.setFontSize(10);
+  doc.text('Producto', 17, y); doc.text('Cant.', W-80, y, {align:'right'});
+  doc.text('Precio', W-48, y, {align:'right'}); doc.text('Importe', W-17, y, {align:'right'});
+  y += 9;
+  doc.setFont('helvetica','normal');
+  v.items.forEach(it=>{
+    const nombre = it.nombre + (it.detalle? ' ('+it.detalle+')':'');
+    const lineas = doc.splitTextToSize(nombre, 95);
+    doc.text(lineas, 17, y);
+    doc.text(String(it.cant), W-80, y, {align:'right'});
+    doc.text(fmt(it.precio), W-48, y, {align:'right'});
+    doc.text(fmt(it.precio*it.cant), W-17, y, {align:'right'});
+    y += lineas.length*5.5 + 3;
+    doc.setDrawColor(230); doc.line(14, y-2, W-14, y-2);
+    if(y > 250){ doc.addPage(); y = 20; }
+  });
+
+  // total
+  y += 6;
+  doc.setFillColor(...azul); doc.roundedRect(W-90, y-7, 76, 12, 2, 2, 'F');
+  doc.setTextColor(255); doc.setFont('helvetica','bold'); doc.setFontSize(12);
+  doc.text('TOTAL:  '+fmt(v.total)+' MXN', W-52, y+1, {align:'center'});
+
+  // pie
+  doc.setTextColor(120); doc.setFont('helvetica','italic'); doc.setFontSize(10);
+  doc.text(cfg.pie||'¡Gracias por su compra!', W/2, 280, {align:'center'});
+
+  doc.save('Nota_'+String(v.folio).padStart(5,'0')+'_'+v.cliente.replace(/\s+/g,'_')+'.pdf');
+}
+
+// ---------- historial ----------
+function renderHistorial(){
+  const tb = document.getElementById('tbodyHist');
+  tb.innerHTML = db.ventas.map(v=>{
+    const f = new Date(v.fecha);
+    return `<tr>
+      <td><strong>#${String(v.folio).padStart(5,'0')}</strong></td>
+      <td>${f.toLocaleDateString('es-MX')} <span class="muted">${f.toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit'})}</span></td>
+      <td>${v.cliente}</td>
+      <td class="muted">${v.items.reduce((a,i)=>a+i.cant,0)}</td>
+      <td><strong>${fmt(v.total)}</strong></td>
+      <td><button class="btn ghost sm" onclick="reimprimir(${v.folio})">📄 PDF</button></td>
+    </tr>`;
+  }).join('');
+  document.getElementById('emptyHist').style.display = db.ventas.length? 'none':'block';
+  document.getElementById('statVentas').textContent = db.ventas.length;
+  document.getElementById('statTotalVendido').textContent = fmt(db.ventas.reduce((a,v)=>a+v.total,0));
+  document.getElementById('statGanancia').textContent = fmt(db.ventas.reduce((a,v)=>a+(v.ganancia||0),0));
+}
+function reimprimir(folio){ const v = db.ventas.find(x=>x.folio===folio); if(v) generarPDF(v); }
+
+// ---------- config ----------
+function cargarConfigForm(){
+  document.getElementById('cfgNombre').value = db.config.nombre||'';
+  document.getElementById('cfgTel').value = db.config.tel||'';
+  document.getElementById('cfgDir').value = db.config.dir||'';
+  document.getElementById('cfgPie').value = db.config.pie||'';
+}
+function guardarConfig(){
+  db.config = {
+    nombre: document.getElementById('cfgNombre').value.trim()||'TechSpot_gf',
+    tel: document.getElementById('cfgTel').value.trim(),
+    dir: document.getElementById('cfgDir').value.trim(),
+    pie: document.getElementById('cfgPie').value.trim()||'¡Gracias por su compra!'
+  };
+  guardar();
+  document.getElementById('bizNameHeader').textContent = db.config.nombre;
+  toast('Ajustes guardados');
+}
+
+// ---------- respaldo ----------
+function exportarDatos(){
+  const blob = new Blob([JSON.stringify(db,null,2)],{type:'application/json'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'respaldo_techspot_'+new Date().toISOString().slice(0,10)+'.json';
+  a.click();
+}
+function importarDatos(ev){
+  const file = ev.target.files[0]; if(!file) return;
+  const r = new FileReader();
+  r.onload = e => {
+    try{
+      const d = JSON.parse(e.target.result);
+      if(!d.productos || !d.ventas) throw 0;
+      db = d; guardar();
+      renderInventario(); renderHistorial(); cargarConfigForm();
+      document.getElementById('bizNameHeader').textContent = db.config.nombre;
+      toast('Respaldo restaurado ✓');
+    }catch(err){ toast('Archivo no válido', true); }
+  };
+  r.readAsText(file);
+}
+
+// ---------- init ----------
+cargar();
+document.getElementById('bizNameHeader').textContent = db.config.nombre;
+cargarConfigForm();
+renderInventario();
+renderSelectProductos();
+</script>
+</body>
+</html>
