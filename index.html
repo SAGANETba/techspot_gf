@@ -5,6 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>TechSpot_gf — Inventario y Ventas</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
 <style>
   :root{
     --bg:#0f1115; --card:#1a1d24; --card2:#22262f; --border:#2e333d;
@@ -66,7 +69,7 @@
 <body>
 
 <header>
-  <h1>🍎 <span id="bizNameHeader">TechSpot_gf</span></h1>
+  <h1>🍎 <span id="bizNameHeader">TechSpot_gf</span> <span id="nubeEstado" class="muted" style="font-size:12px;font-weight:400"></span></h1>
   <nav>
     <button class="active" data-page="inventario" onclick="goTo('inventario')">Inventario</button>
     <button data-page="ventas" onclick="goTo('ventas')">Nueva venta</button>
@@ -126,7 +129,7 @@
     <h2>Datos del cliente</h2>
     <div class="grid">
       <div><label>Nombre del cliente *</label><input id="cliNombre" placeholder="Nombre completo"></div>
-      <div><label>Teléfono</label><input id="cliTel" placeholder="Opcional"></div>
+      <div><label>Teléfono (WhatsApp)</label><input id="cliTel" placeholder="10 dígitos — para enviarle su nota"></div>
     </div>
   </div>
 
@@ -184,6 +187,10 @@
     <button class="btn" onclick="guardarConfig()">Guardar ajustes</button>
   </div>
   <div class="panel">
+    <h2>☁️ Nube — ver desde cualquier dispositivo</h2>
+    <div id="nubePanel"></div>
+  </div>
+  <div class="panel">
     <h2>Respaldo de datos</h2>
     <p class="muted" style="margin-bottom:12px">Tus datos se guardan automáticamente en este navegador. Puedes exportar un respaldo o restaurarlo.</p>
     <div style="display:flex;gap:10px;flex-wrap:wrap">
@@ -195,6 +202,20 @@
 </div>
 
 </main>
+
+<div id="loginOverlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:50;align-items:center;justify-content:center">
+  <div class="panel" style="max-width:380px;width:92%">
+    <h2>☁️ Inicia sesión</h2>
+    <p class="muted" style="margin-bottom:12px">Usa el mismo correo y contraseña en todos tus dispositivos para ver tu inventario sincronizado.</p>
+    <label>Correo</label><input id="loginEmail" type="email" style="margin-bottom:10px" placeholder="tucorreo@ejemplo.com">
+    <label>Contraseña</label><input id="loginPass" type="password" style="margin-bottom:14px" placeholder="Mínimo 6 caracteres">
+    <div style="display:flex;gap:10px;flex-wrap:wrap">
+      <button class="btn" onclick="loginNube(false)">Entrar</button>
+      <button class="btn green" onclick="loginNube(true)">Crear cuenta</button>
+      <button class="btn ghost" onclick="usarSinNube()">Usar sin nube</button>
+    </div>
+  </div>
+</div>
 
 <div class="toast" id="toast"></div>
 
@@ -208,7 +229,7 @@ let editandoId = null;
 function cargar(){
   try{ const raw = localStorage.getItem(LS); if(raw){ const d = JSON.parse(raw); db = Object.assign(db, d); db.config = Object.assign({nombre:'TechSpot_gf',tel:'',dir:'',pie:'¡Gracias por su compra!'}, d.config||{}); } }catch(e){}
 }
-function guardar(){ localStorage.setItem(LS, JSON.stringify(db)); }
+function guardar(){ localStorage.setItem(LS, JSON.stringify(db)); subirNube(); }
 
 // ---------- utilidades ----------
 const fmt = n => '$' + Number(n).toLocaleString('es-MX',{minimumFractionDigits:2,maximumFractionDigits:2});
@@ -356,13 +377,16 @@ function finalizarVenta(){
   db.ventas.unshift(venta);
   guardar();
   generarPDF(venta);
+  if(venta.tel) enviarWhatsApp(venta);
   carrito=[]; renderCarrito(); renderInventario(); renderSelectProductos();
   document.getElementById('cliNombre').value=''; document.getElementById('cliTel').value='';
   toast('Venta registrada y PDF generado ✓');
 }
 
 // ---------- PDF ----------
-function generarPDF(v){
+function nombrePDF(v){ return 'Nota_'+String(v.folio).padStart(5,'0')+'_'+v.cliente.replace(/\s+/g,'_')+'.pdf'; }
+function generarPDF(v){ crearDoc(v).save(nombrePDF(v)); }
+function crearDoc(v){
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF();
   const W = doc.internal.pageSize.getWidth();
@@ -419,7 +443,38 @@ function generarPDF(v){
   doc.setTextColor(120); doc.setFont('helvetica','italic'); doc.setFontSize(10);
   doc.text(cfg.pie||'¡Gracias por su compra!', W/2, 280, {align:'center'});
 
-  doc.save('Nota_'+String(v.folio).padStart(5,'0')+'_'+v.cliente.replace(/\s+/g,'_')+'.pdf');
+  return doc;
+}
+
+// ---------- WhatsApp ----------
+function normalizarTel(t){
+  let d = (t||'').replace(/\D/g,'');
+  if(!d) return '';
+  if(d.length===10) d = '52'+d; // lada de México por defecto
+  return d;
+}
+function enviarWhatsApp(v){
+  const num = normalizarTel(v.tel);
+  if(!num){ toast('Esta venta no tiene teléfono registrado', true); return; }
+  const lineas = v.items.map(it=>'- '+it.cant+'x '+it.nombre+(it.detalle?' ('+it.detalle+')':'')+' — '+fmt(it.precio*it.cant)).join('\n');
+  const msg = '¡Hola '+v.cliente+'! 👋\nGracias por tu compra en *'+(db.config.nombre||'TechSpot_gf')+'*.\n\n*Nota de venta #'+String(v.folio).padStart(5,'0')+'*\n'+lineas+'\n\n*Total: '+fmt(v.total)+' MXN*\n\nTe adjunto tu nota en PDF. '+(db.config.pie||'');
+  window.open('https://wa.me/'+num+'?text='+encodeURIComponent(msg), '_blank');
+}
+async function compartirPDF(folio){
+  const v = db.ventas.find(x=>x.folio===folio); if(!v) return;
+  const doc = crearDoc(v);
+  try{
+    const blob = doc.output('blob');
+    const file = new File([blob], nombrePDF(v), {type:'application/pdf'});
+    if(navigator.canShare && navigator.canShare({files:[file]})){
+      await navigator.share({files:[file], title:'Nota de venta', text:'Nota de venta #'+String(v.folio).padStart(5,'0')});
+      return;
+    }
+  }catch(e){ if(e && e.name==='AbortError') return; }
+  // Escritorio: descarga el PDF y abre el chat del cliente
+  doc.save(nombrePDF(v));
+  if(v.tel) enviarWhatsApp(v);
+  else toast('PDF descargado. Adjúntalo en WhatsApp.', false);
 }
 
 // ---------- historial ----------
@@ -433,7 +488,11 @@ function renderHistorial(){
       <td>${v.cliente}</td>
       <td class="muted">${v.items.reduce((a,i)=>a+i.cant,0)}</td>
       <td><strong>${fmt(v.total)}</strong></td>
-      <td><button class="btn ghost sm" onclick="reimprimir(${v.folio})">📄 PDF</button></td>
+      <td style="white-space:nowrap">
+        <button class="btn ghost sm" onclick="reimprimir(${v.folio})" title="Descargar PDF">📄</button>
+        <button class="btn green sm" onclick="compartirPDF(${v.folio})" title="Enviar por WhatsApp">📲</button>
+        <button class="btn red sm" onclick="eliminarVenta(${v.folio})" title="Eliminar venta">🗑</button>
+      </td>
     </tr>`;
   }).join('');
   document.getElementById('emptyHist').style.display = db.ventas.length? 'none':'block';
@@ -442,6 +501,16 @@ function renderHistorial(){
   document.getElementById('statGanancia').textContent = fmt(db.ventas.reduce((a,v)=>a+(v.ganancia||0),0));
 }
 function reimprimir(folio){ const v = db.ventas.find(x=>x.folio===folio); if(v) generarPDF(v); }
+function eliminarVenta(folio){
+  const v = db.ventas.find(x=>x.folio===folio); if(!v) return;
+  if(!confirm('¿Eliminar la venta #'+String(v.folio).padStart(5,'0')+' de '+v.cliente+' por '+fmt(v.total)+'?')) return;
+  if(confirm('¿Devolver los productos de esta venta al inventario?\n\nAceptar = sí, devolver al stock\nCancelar = no, solo borrar la venta')){
+    v.items.forEach(it=>{ const p = db.productos.find(x=>x.id===it.id); if(p) p.stock += it.cant; });
+  }
+  db.ventas = db.ventas.filter(x=>x.folio!==folio);
+  guardar(); renderHistorial(); renderInventario(); renderSelectProductos();
+  toast('Venta eliminada');
+}
 
 // ---------- config ----------
 function cargarConfigForm(){
@@ -486,12 +555,117 @@ function importarDatos(ev){
   r.readAsText(file);
 }
 
+// ---------- nube (Firebase) ----------
+const LSFB = 'techspot_gf_fb';
+let fbUser = null, fbRef = null, fbUnsub = null, aplicandoRemoto = false;
+function fbConfigGuardada(){ try{ return JSON.parse(localStorage.getItem(LSFB)||'null'); }catch(e){ return null; } }
+function conectarNube(){
+  const txt = document.getElementById('fbConfigTxt').value;
+  const cfg = {};
+  (txt.match(/(\w+)\s*:\s*["']([^"']+)["']/g)||[]).forEach(par=>{
+    const m = par.match(/(\w+)\s*:\s*["']([^"']+)["']/); if(m) cfg[m[1]]=m[2];
+  });
+  if(!cfg.apiKey || !cfg.projectId){ toast('Configuración no válida. Pega el bloque completo de Firebase.', true); return; }
+  localStorage.setItem(LSFB, JSON.stringify(cfg));
+  toast('Nube configurada ✓');
+  iniciarNube();
+}
+function desconectarNube(){
+  if(fbUnsub){ fbUnsub(); fbUnsub=null; }
+  try{ if(window.firebase && firebase.apps.length) firebase.auth().signOut(); }catch(e){}
+  localStorage.removeItem(LSFB);
+  fbUser=null; fbRef=null;
+  document.getElementById('loginOverlay').style.display='none';
+  actualizarUINube(); toast('Nube desconectada. Tus datos siguen en este dispositivo.');
+}
+function iniciarNube(){
+  const cfg = fbConfigGuardada();
+  if(!cfg || !window.firebase){ actualizarUINube(); return; }
+  if(!firebase.apps.length) firebase.initializeApp(cfg);
+  firebase.auth().onAuthStateChanged(async user=>{
+    fbUser = user;
+    if(fbUnsub){ fbUnsub(); fbUnsub=null; }
+    if(user){
+      document.getElementById('loginOverlay').style.display='none';
+      fbRef = firebase.firestore().collection('usuarios').doc(user.uid);
+      try{
+        const snap = await fbRef.get();
+        if(snap.exists){
+          const r = snap.data();
+          if((r._updated||0) >= (db._updated||0)) aplicarRemoto(r); else subirNube();
+        } else subirNube();
+        fbUnsub = fbRef.onSnapshot(s=>{
+          if(s.metadata.hasPendingWrites || !s.exists) return;
+          const r = s.data();
+          if((r._updated||0) > (db._updated||0)) aplicarRemoto(r);
+        });
+      }catch(e){ toast('Error al sincronizar: '+e.message, true); }
+    } else {
+      document.getElementById('loginOverlay').style.display='flex';
+    }
+    actualizarUINube();
+  });
+}
+function aplicarRemoto(r){
+  aplicandoRemoto = true;
+  db = Object.assign({productos:[],ventas:[],folio:1,config:{nombre:'TechSpot_gf',tel:'',dir:'',pie:'¡Gracias por su compra!'}}, r);
+  localStorage.setItem(LS, JSON.stringify(db));
+  renderTodo();
+  aplicandoRemoto = false;
+}
+function subirNube(){
+  if(!fbUser || !fbRef || aplicandoRemoto) return;
+  db._updated = Date.now();
+  localStorage.setItem(LS, JSON.stringify(db));
+  fbRef.set(JSON.parse(JSON.stringify(db))).catch(e=>toast('No se pudo sincronizar: '+e.message, true));
+}
+async function loginNube(crear){
+  const email = document.getElementById('loginEmail').value.trim();
+  const pass = document.getElementById('loginPass').value;
+  if(!email || pass.length<6){ toast('Escribe correo y contraseña (mínimo 6 caracteres)', true); return; }
+  try{
+    if(crear) await firebase.auth().createUserWithEmailAndPassword(email, pass);
+    else await firebase.auth().signInWithEmailAndPassword(email, pass);
+    toast('Sesión iniciada ✓');
+  }catch(e){
+    const msgs = {
+      'auth/email-already-in-use':'Ese correo ya tiene cuenta. Usa "Entrar".',
+      'auth/invalid-credential':'Correo o contraseña incorrectos',
+      'auth/wrong-password':'Contraseña incorrecta',
+      'auth/user-not-found':'No existe cuenta con ese correo. Usa "Crear cuenta".',
+      'auth/invalid-email':'Correo no válido',
+      'auth/weak-password':'La contraseña debe tener al menos 6 caracteres'
+    };
+    toast(msgs[e.code]||('Error: '+e.message), true);
+  }
+}
+function cerrarSesionNube(){ firebase.auth().signOut(); toast('Sesión cerrada'); }
+function usarSinNube(){ document.getElementById('loginOverlay').style.display='none'; }
+function actualizarUINube(){
+  const cfg = fbConfigGuardada();
+  const est = document.getElementById('nubeEstado');
+  const panel = document.getElementById('nubePanel');
+  if(fbUser){
+    est.textContent = '☁️ ' + fbUser.email;
+    panel.innerHTML = '<p class="muted" style="margin-bottom:12px">Conectado como <strong>'+fbUser.email+'</strong>. Tus datos se sincronizan automáticamente entre todos tus dispositivos.</p><div style="display:flex;gap:10px;flex-wrap:wrap"><button class="btn ghost" onclick="cerrarSesionNube()">Cerrar sesión</button><button class="btn red" onclick="desconectarNube()">Desconectar la nube</button></div>';
+  } else if(cfg){
+    est.textContent = '☁️ sin sesión';
+    panel.innerHTML = '<p class="muted" style="margin-bottom:12px">Nube configurada. Inicia sesión para sincronizar tus datos.</p><div style="display:flex;gap:10px;flex-wrap:wrap"><button class="btn" onclick="document.getElementById(\'loginOverlay\').style.display=\'flex\'">Iniciar sesión</button><button class="btn ghost" onclick="desconectarNube()">Quitar configuración</button></div>';
+  } else {
+    est.textContent = '';
+    panel.innerHTML = '<p class="muted" style="margin-bottom:12px">Pega aquí la configuración de tu proyecto de Firebase (el bloque <code>firebaseConfig</code>) para ver tu inventario desde cualquier dispositivo.</p><textarea id="fbConfigTxt" rows="6" style="width:100%;background:var(--card2);border:1px solid var(--border);color:var(--text);border-radius:10px;padding:10px;font-size:13px;font-family:monospace" placeholder=\'apiKey: "...", authDomain: "...", projectId: "..."\'></textarea><div style="margin-top:10px"><button class="btn" onclick="conectarNube()">Conectar nube</button></div>';
+  }
+}
+
 // ---------- init ----------
+function renderTodo(){
+  renderInventario(); renderSelectProductos(); renderHistorial(); cargarConfigForm();
+  document.getElementById('bizNameHeader').textContent = db.config.nombre||'TechSpot_gf';
+}
 cargar();
-document.getElementById('bizNameHeader').textContent = db.config.nombre;
-cargarConfigForm();
-renderInventario();
-renderSelectProductos();
+renderTodo();
+actualizarUINube();
+iniciarNube();
 </script>
 </body>
 </html>
