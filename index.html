@@ -557,8 +557,16 @@ function importarDatos(ev){
 
 // ---------- nube (Firebase) ----------
 const LSFB = 'techspot_gf_fb';
+const FB_DEFAULT = {
+  apiKey: "AIzaSyDfgkPfCOgfUlHAmW7WoSm6U7nCYm9PkWo",
+  authDomain: "techspot-gf.firebaseapp.com",
+  projectId: "techspot-gf",
+  storageBucket: "techspot-gf.firebasestorage.app",
+  messagingSenderId: "790716520237",
+  appId: "1:790716520237:web:7ac5bb1c5764aa159da5a4"
+};
 let fbUser = null, fbRef = null, fbUnsub = null, aplicandoRemoto = false;
-function fbConfigGuardada(){ try{ return JSON.parse(localStorage.getItem(LSFB)||'null'); }catch(e){ return null; } }
+function fbConfigGuardada(){ try{ return JSON.parse(localStorage.getItem(LSFB)||'null') || FB_DEFAULT; }catch(e){ return FB_DEFAULT; } }
 function conectarNube(){
   const txt = document.getElementById('fbConfigTxt').value;
   const cfg = {};
